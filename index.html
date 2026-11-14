@@ -1150,7 +1150,9 @@
         const video = card.querySelector("video");
         video.dataset.case = item.id;
         video.dataset.method = method.key;
-        video.dataset.firstChunk = String(CHUNK_DATA.timelines[item.id][method.key][1]);
+        const starts = CHUNK_DATA.timelines[item.id]?.[method.key];
+        if (starts?.[1] > 0) video.dataset.firstChunk = String(starts[1]);
+        if (!starts?.length) card.querySelector(".method-note").textContent = `${method.note} · Full video only`;
         grid.append(card);
       }
 
@@ -1196,7 +1198,7 @@
         caseTabs[i].setAttribute("aria-selected", String(selected));
         caseTabs[i].tabIndex = selected ? 0 : -1;
       });
-      document.getElementById("showcase-count").textContent = `${String(activeCaseIndex + 1).padStart(2, "0")} / ${String(CASES.length).padStart(2, "0")} · 6 methods`;
+      document.getElementById("showcase-count").textContent = `${String(activeCaseIndex + 1).padStart(2, "0")} / ${String(CASES.length).padStart(2, "0")} · ${METHODS.length} methods`;
       if (prioritize) videoLoader.prioritize(item.id);
       if (updateHash) history.replaceState(null, "", `#${item.id}`);
       if (focus) caseTabs[activeCaseIndex].focus({ preventScroll: true });
@@ -1269,8 +1271,11 @@
       renderChunkPrompt(section, item, chunkIndex);
       if (!shouldSeek) return;
       for (const video of section.querySelectorAll("video[data-method]")) {
-        const starts = CHUNK_DATA.timelines[item.id][video.dataset.method];
-        seekVideo(video, starts[chunkIndex]);
+        const starts = CHUNK_DATA.timelines[item.id]?.[video.dataset.method];
+        // Without verified timings, only the beginning can be synchronized.
+        if (chunkIndex === 0) seekVideo(video, 0);
+        else if (Number.isFinite(starts?.[chunkIndex])) seekVideo(video, starts[chunkIndex]);
+        else video.pause();
       }
     }
 
@@ -1406,7 +1411,9 @@
     }
 
     function togglePlayAll(section, item) {
-      const videos = [...section.querySelectorAll("video[data-method]")];
+      const chunkIndex = Number(section.dataset.activeChunk) || 0;
+      const videos = [...section.querySelectorAll("video[data-method]")]
+        .filter(video => chunkIndex === 0 || Number.isFinite(CHUNK_DATA.timelines[item.id]?.[video.dataset.method]?.[chunkIndex]));
       if (groupPlayback === section) {
         groupPlayback = null;
         updatePlayAllButtons();
@@ -1431,7 +1438,8 @@
       if (groupPlayback?.contains(video) && method !== METHODS[0].key) return;
       const section = video.closest("[data-case-section]");
       const item = CASE_BY_ID.get(caseId);
-      const starts = CHUNK_DATA.timelines[caseId][method];
+      const starts = CHUNK_DATA.timelines[caseId]?.[method];
+      if (!starts?.length) return;
       const chunkIndex = chunkAtTime(starts, video.currentTime);
       if (section.dataset.activeChunk !== String(chunkIndex)) {
         renderChunkPrompt(section, item, chunkIndex);
